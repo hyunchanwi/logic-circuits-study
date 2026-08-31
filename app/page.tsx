@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Binary, BookOpen, Check, ChevronRight, CircleHelp, Clipboard, Clock3, Cpu, Gauge, Lightbulb, Menu, Network, Search, ShieldAlert, X, Zap } from 'lucide-react';
 
 const sections = [
@@ -29,25 +29,84 @@ export default function Home() {
   const [activeWeek, setActiveWeek] = useState(1);
   const [query, setQuery] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const [completed, setCompleted] = useState(() => {
     if (typeof window === 'undefined') return false;
     try { return localStorage.getItem('logic-circuits-completed') === 'true'; } catch { return false; }
   });
   const [answers, setAnswers] = useState<number[]>([]);
   const [copied, setCopied] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
   const matches = useMemo(() => { const key = query.trim().toLowerCase(); return key ? sections.filter(s => `${s.title} ${s.keywords}`.toLowerCase().includes(key)) : sections; }, [query]);
   const progressValue = completed ? Math.round(100 / weeks.length) : 0;
-  function selectWeek(week: number) { setActiveWeek(week); setMenuOpen(false); setQuery(''); window.scrollTo({ top: 0, behavior: 'smooth' }); }
-  function go(id: string) { setActiveWeek(1); setMenuOpen(false); setQuery(''); window.setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }), 50); }
+  const closeMenu = useCallback((restoreFocus = true) => { if (restoreFocus && isMobile && menuOpen) menuButtonRef.current?.focus({ preventScroll: true }); setMenuOpen(false); }, [isMobile, menuOpen]);
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 760px)');
+    const update = () => {
+      setIsMobile(media.matches);
+      if (!media.matches) setMenuOpen(false);
+    };
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+  useEffect(() => {
+    if (!sidebarRef.current || (isMobile && !menuOpen)) return;
+    const activeItem = sidebarRef.current.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!activeItem) return;
+    const sidebarBounds = sidebarRef.current.getBoundingClientRect();
+    const itemBounds = activeItem.getBoundingClientRect();
+    if (itemBounds.top < sidebarBounds.top || itemBounds.bottom > sidebarBounds.bottom) {
+      activeItem.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'nearest' });
+    }
+  }, [activeWeek, isMobile, menuOpen]);
+  useEffect(() => {
+    if (!isMobile || !menuOpen || !sidebarRef.current) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeMenu();
+        return;
+      }
+      if (event.key !== 'Tab' || !sidebarRef.current) return;
+      const focusable = [...sidebarRef.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled])')];
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (!sidebarRef.current.contains(active)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    window.requestAnimationFrame(() => closeButtonRef.current?.focus({ preventScroll: true }));
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [closeMenu, isMobile, menuOpen]);
+  function selectWeek(week: number) { setActiveWeek(week); closeMenu(); setQuery(''); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+  function go(id: string) { setActiveWeek(1); closeMenu(); setQuery(''); window.setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }), 50); }
   function toggleComplete() { const next = !completed; setCompleted(next); try { localStorage.setItem('logic-circuits-completed', String(next)); } catch { /* device-local storage may be unavailable */ } }
   function toggleAnswer(n: number) { setAnswers(a => a.includes(n) ? a.filter(v => v !== n) : [...a, n]); }
   async function copyFlow() { try { await navigator.clipboard.writeText('진리표 → 논리식 → 게이트 → 회로 → HDL'); setCopied(true); setTimeout(() => setCopied(false), 1400); } catch { setCopied(false); } }
 
   return <div className="site-shell">
-    <header className="topbar"><a className="brand" href="#top"><span className="brand-mark"><Binary size={21} /></span><span><b>Gate Lab</b><small>논리회로 학습실</small></span></a><label className="search-box"><Search size={17} /><input aria-label="개념 검색" placeholder="게이트, K-map, Verilog 검색" value={query} onChange={e => setQuery(e.target.value)} />{query && <button aria-label="검색어 지우기" onClick={() => setQuery('')}><X size={16} /></button>}</label><button className="mobile-menu" aria-label={menuOpen ? '주차 목록 닫기' : '주차 목록 열기'} onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? <X /> : <Menu />}</button><div className="progress"><span>{completed ? 1 : 0} / {weeks.length}</span><i><b style={{ width: `${progressValue}%` }} /></i></div>{query && <output className="search-results"><span>{matches.length ? `${matches.length}개 항목을 찾았습니다` : '일치하는 개념이 없습니다'}</span>{matches.map(section => <button key={section.id} onClick={() => go(section.id)}><b>01</b><span>{section.title}</span><ChevronRight size={14} /></button>)}</output>}</header>
+    <header className="topbar"><a className="brand" href="#top"><span className="brand-mark"><Binary size={21} /></span><span><b>Gate Lab</b><small>논리회로 학습실</small></span></a><label className="search-box"><Search size={17} /><input aria-label="개념 검색" placeholder="게이트, K-map, Verilog 검색" value={query} onChange={e => setQuery(e.target.value)} />{query && <button aria-label="검색어 지우기" onClick={() => setQuery('')}><X size={16} /></button>}</label><button ref={menuButtonRef} className="mobile-menu" aria-label={menuOpen ? '주차 목록 닫기' : '주차 목록 열기'} aria-expanded={menuOpen} aria-controls="week-sidebar" onClick={() => menuOpen ? closeMenu() : setMenuOpen(true)}>{menuOpen ? <X /> : <Menu />}</button><div className="progress"><span>{completed ? 1 : 0} / {weeks.length}</span><i><b style={{ width: `${progressValue}%` }} /></i></div>{query && <output className="search-results"><span>{matches.length ? `${matches.length}개 항목을 찾았습니다` : '일치하는 개념이 없습니다'}</span>{matches.map(section => <button key={section.id} onClick={() => go(section.id)}><b>01</b><span>{section.title}</span><ChevronRight size={14} /></button>)}</output>}</header>
     <div className="workspace" id="top">
-      {menuOpen && <button className="backdrop" aria-label="목차 닫기" onClick={() => setMenuOpen(false)} />}
-      <aside className={`sidebar ${menuOpen ? 'open' : ''}`}><a className="hub-link" href="https://hyunchanwi.github.io/study-hub/"><ArrowLeft size={15} /> 전체 과목</a><p className="nav-label">ALL WEEKS</p><nav className="week-list">{weeks.map(week => <button className={`week ${activeWeek === week.number ? 'active' : ''} ${week.available ? 'available' : 'pending'}`} key={week.number} onClick={() => selectWeek(week.number)} aria-current={activeWeek === week.number ? 'page' : undefined}><span>{week.number === 1 && completed ? <Check size={14} /> : String(week.number).padStart(2, '0')}</span><b>{week.title}</b><small>{week.note}</small></button>)}</nav><div className="source-note"><ShieldAlert size={18} /><b>출처 기준</b><p>현재 공개 내용은 1주차 OT 자료에서 확인한 운영 정보와 학습 범위입니다. 이후 주차는 자료가 추가될 때 채웁니다.</p></div></aside>
+      {menuOpen && <button className="backdrop" aria-label="목차 닫기" onClick={() => closeMenu()} />}
+      <aside ref={sidebarRef} className={`sidebar ${menuOpen ? 'open' : ''}`} id="week-sidebar" aria-label="전체 주차 목차" role={isMobile && menuOpen ? 'dialog' : undefined} aria-modal={isMobile && menuOpen ? true : undefined} aria-hidden={isMobile && !menuOpen ? true : undefined} inert={isMobile && !menuOpen ? true : undefined}><a className="hub-link" href="https://hyunchanwi.github.io/study-hub/"><ArrowLeft size={15} /> 전체 과목</a><div className="sidebar-head"><p className="nav-label">ALL WEEKS</p><button ref={closeButtonRef} className="sidebar-close" aria-label="주차 목록 닫기" onClick={() => closeMenu()}><X size={20} /></button></div><nav className="week-list">{weeks.map(week => <button className={`week ${activeWeek === week.number ? 'active' : ''} ${week.available ? 'available' : 'pending'}`} key={week.number} onClick={() => selectWeek(week.number)} aria-current={activeWeek === week.number ? 'page' : undefined}><span>{week.number === 1 && completed ? <Check size={14} /> : String(week.number).padStart(2, '0')}</span><b>{week.title}</b><small>{week.note}</small></button>)}</nav><div className="source-note"><ShieldAlert size={18} /><b>출처 기준</b><p>현재 공개 내용은 1주차 OT 자료에서 확인한 운영 정보와 학습 범위입니다. 이후 주차는 자료가 추가될 때 채웁니다.</p></div></aside>
       <main className="content">
         {activeWeek === 1 ? <section className="hero"><div><p className="eyebrow"><span /> WEEK 01 · ORIENTATION</p><h1>0과 1로<br /><em>하드웨어를 설계하다.</em></h1><p>논리회로의 해석과 설계 방법을 익혀 조합회로, 순차회로, 기억소자를 이해하는 과목입니다.</p><div className="chips"><span>OT 9쪽</span><span>시험 중심</span><span>Verilog 연결</span></div></div><button className={`complete ${completed ? 'done' : ''}`} onClick={toggleComplete}>{completed ? <><Check size={18} /> 학습 완료</> : <><Gauge size={18} /> 완료로 표시</>}</button></section> : <section className="hero pending-hero"><div><p className="eyebrow"><span /> WEEK {String(activeWeek).padStart(2, '0')} · MATERIALS PENDING</p><h1>{activeWeek}주차<br /><em>강의자료 대기</em></h1><p>이 주차의 강의자료가 아직 없어 내용을 임의로 만들지 않았습니다. 파일이 추가되면 실제 자료를 확인한 뒤 목차와 학습 노트를 채웁니다.</p><div className="chips"><span>자료 미등록</span><span>검증 후 업데이트</span></div></div></section>}
         {activeWeek === 1 ? <div className="stack">
