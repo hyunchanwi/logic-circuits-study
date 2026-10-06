@@ -1,5 +1,8 @@
 'use client';
 import { ClaudeStudyNotes, StudyNotesJump } from './claude-study-notes';
+import { WeeklyStudy } from './weekly-study';
+import { weeklyCatalog } from '../src/weekly-catalog';
+import { lectureSummaries } from '../src/lecture-summaries';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Binary, BookOpen, Check, ChevronRight, CircleHelp, Clipboard, Clock3, Cpu, Gauge, Lightbulb, Menu, Network, Search, ShieldAlert, X, Zap } from 'lucide-react';
@@ -21,9 +24,9 @@ const chapters = [
 
 const weeks = Array.from({ length: 15 }, (_, index) => ({
   number: index + 1,
-  title: index === 0 ? 'OT · 과목 안내' : `${index + 1}주차`,
-  note: index === 0 ? '9쪽 · 학습 가능' : '강의자료 대기',
-  available: index === 0,
+  title: weeklyCatalog[index]?.title ?? `${index + 1}주차`,
+  note: weeklyCatalog[index]?.summary ?? '강의자료 대기',
+  available: index < 5,
 }));
 
 export default function Home() {
@@ -31,17 +34,20 @@ export default function Home() {
   const [query, setQuery] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  const [completed, setCompleted] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    try { return localStorage.getItem('logic-circuits-completed') === 'true'; } catch { return false; }
+  const [completedWeeks, setCompletedWeeks] = useState<number[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try { const saved = JSON.parse(localStorage.getItem('logic-circuits-weekly-completed') ?? 'null'); return Array.isArray(saved) ? saved.filter((week) => Number.isInteger(week) && week >= 1 && week <= 5) : localStorage.getItem('logic-circuits-completed') === 'true' ? [1] : []; } catch { return []; }
   });
   const [answers, setAnswers] = useState<number[]>([]);
   const [copied, setCopied] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
-  const matches = useMemo(() => { const key = query.trim().toLowerCase(); return key ? sections.filter(s => `${s.title} ${s.keywords}`.toLowerCase().includes(key)) : sections; }, [query]);
-  const progressValue = completed ? Math.round(100 / weeks.length) : 0;
+  const completed = completedWeeks.includes(activeWeek);
+  const activeEntry = weeklyCatalog.find((entry) => entry.number === activeWeek);
+  const activeSections = useMemo(() => activeWeek === 1 ? sections : lectureSummaries.filter((lecture) => activeEntry?.lectureIds.includes(lecture.id)).map((lecture) => ({ id: `learning-${lecture.id}`, title: lecture.title, keywords: lecture.sections.map((section) => `${section.title} ${section.paragraphs.join(' ')}`).join(' ') })), [activeWeek, activeEntry]);
+  const matches = useMemo(() => { const key = query.trim().toLowerCase(); return key ? activeSections.filter(s => `${s.title} ${s.keywords}`.toLowerCase().includes(key)) : activeSections; }, [query, activeSections]);
+  const progressValue = Math.round(completedWeeks.length * 100 / weeks.length);
   const closeMenu = useCallback((restoreFocus = true) => { if (restoreFocus && isMobile && menuOpen) menuButtonRef.current?.focus({ preventScroll: true }); setMenuOpen(false); }, [isMobile, menuOpen]);
   useEffect(() => {
     const media = window.matchMedia('(max-width: 760px)');
@@ -98,19 +104,19 @@ export default function Home() {
     };
   }, [closeMenu, isMobile, menuOpen]);
   function selectWeek(week: number) { setActiveWeek(week); closeMenu(); setQuery(''); window.scrollTo({ top: 0, behavior: 'smooth' }); }
-  function go(id: string) { setActiveWeek(1); closeMenu(); setQuery(''); window.setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }), 50); }
-  function toggleComplete() { const next = !completed; setCompleted(next); try { localStorage.setItem('logic-circuits-completed', String(next)); } catch { /* device-local storage may be unavailable */ } }
+  function go(id: string) { closeMenu(); setQuery(''); window.setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }), 50); }
+  function toggleComplete() { if (activeWeek > 5) return; const next = completed ? completedWeeks.filter((week) => week !== activeWeek) : [...completedWeeks, activeWeek]; setCompletedWeeks(next); try { localStorage.setItem('logic-circuits-weekly-completed', JSON.stringify(next)); } catch {} }
   function toggleAnswer(n: number) { setAnswers(a => a.includes(n) ? a.filter(v => v !== n) : [...a, n]); }
   async function copyFlow() { try { await navigator.clipboard.writeText('진리표 → 논리식 → 게이트 → 회로 → HDL'); setCopied(true); setTimeout(() => setCopied(false), 1400); } catch { setCopied(false); } }
 
   return <div className="site-shell">
-    <header className="topbar"><a className="brand" href="#top"><span className="brand-mark"><Binary size={21} /></span><span><b>Gate Lab</b><small>논리회로 학습실</small></span></a><label className="search-box"><Search size={17} /><input aria-label="개념 검색" placeholder="게이트, K-map, Verilog 검색" value={query} onChange={e => setQuery(e.target.value)} />{query && <button aria-label="검색어 지우기" onClick={() => setQuery('')}><X size={16} /></button>}</label><button ref={menuButtonRef} className="mobile-menu" aria-label={menuOpen ? '주차 목록 닫기' : '주차 목록 열기'} aria-expanded={menuOpen} aria-controls="week-sidebar" onClick={() => menuOpen ? closeMenu() : setMenuOpen(true)}>{menuOpen ? <X /> : <Menu />}</button><div className="progress"><span>{completed ? 1 : 0} / {weeks.length}</span><i><b style={{ width: `${progressValue}%` }} /></i></div>{query && <output className="search-results"><span>{matches.length ? `${matches.length}개 항목을 찾았습니다` : '일치하는 개념이 없습니다'}</span>{matches.map(section => <button key={section.id} onClick={() => go(section.id)}><b>01</b><span>{section.title}</span><ChevronRight size={14} /></button>)}</output>}</header>
+    <header className="topbar"><a className="brand" href="#top"><span className="brand-mark"><Binary size={21} /></span><span><b>Gate Lab</b><small>논리회로 학습실</small></span></a><label className="search-box"><Search size={17} /><input aria-label="개념 검색" placeholder="게이트, K-map, Verilog 검색" value={query} onChange={e => setQuery(e.target.value)} />{query && <button aria-label="검색어 지우기" onClick={() => setQuery('')}><X size={16} /></button>}</label><button ref={menuButtonRef} className="mobile-menu" aria-label={menuOpen ? '주차 목록 닫기' : '주차 목록 열기'} aria-expanded={menuOpen} aria-controls="week-sidebar" onClick={() => menuOpen ? closeMenu() : setMenuOpen(true)}>{menuOpen ? <X /> : <Menu />}</button><div className="progress"><span>{completedWeeks.length} / {weeks.length}</span><i><b style={{ width: `${progressValue}%` }} /></i></div>{query && <output className="search-results"><span>{matches.length ? `${matches.length}개 항목을 찾았습니다` : '일치하는 개념이 없습니다'}</span>{matches.map(section => <button key={section.id} onClick={() => go(section.id)}><b>{String(activeWeek).padStart(2, '0')}</b><span>{section.title}</span><ChevronRight size={14} /></button>)}</output>}</header>
     <div className="workspace" id="top">
       {menuOpen && <button className="backdrop" aria-label="목차 닫기" onClick={() => closeMenu()} />}
-      <aside ref={sidebarRef} className={`sidebar ${menuOpen ? 'open' : ''}`} id="week-sidebar" aria-label="전체 주차 목차" role={isMobile && menuOpen ? 'dialog' : undefined} aria-modal={isMobile && menuOpen ? true : undefined} aria-hidden={isMobile && !menuOpen ? true : undefined} inert={isMobile && !menuOpen ? true : undefined}><a className="hub-link" href="https://hyunchanwi.github.io/study-hub/"><ArrowLeft size={15} /> 전체 과목</a><div className="sidebar-head"><p className="nav-label">ALL WEEKS</p><button ref={closeButtonRef} className="sidebar-close" aria-label="주차 목록 닫기" onClick={() => closeMenu()}><X size={20} /></button></div><nav className="week-list">{weeks.map(week => <button className={`week ${activeWeek === week.number ? 'active' : ''} ${week.available ? 'available' : 'pending'}`} key={week.number} onClick={() => selectWeek(week.number)} aria-current={activeWeek === week.number ? 'page' : undefined}><span>{week.number === 1 && completed ? <Check size={14} /> : String(week.number).padStart(2, '0')}</span><b>{week.title}</b><small>{week.note}</small></button>)}</nav><div className="source-note"><ShieldAlert size={18} /><b>출처 기준</b><p>현재 공개 내용은 1주차 OT 자료에서 확인한 운영 정보와 학습 범위입니다. 이후 주차는 자료가 추가될 때 채웁니다.</p></div></aside>
+      <aside ref={sidebarRef} className={`sidebar ${menuOpen ? 'open' : ''}`} id="week-sidebar" aria-label="전체 주차 목차" role={isMobile && menuOpen ? 'dialog' : undefined} aria-modal={isMobile && menuOpen ? true : undefined} aria-hidden={isMobile && !menuOpen ? true : undefined} inert={isMobile && !menuOpen ? true : undefined}><a className="hub-link" href="https://hyunchanwi.github.io/study-hub/"><ArrowLeft size={15} /> 전체 과목</a><div className="sidebar-head"><p className="nav-label">ALL WEEKS</p><button ref={closeButtonRef} className="sidebar-close" aria-label="주차 목록 닫기" onClick={() => closeMenu()}><X size={20} /></button></div><nav className="week-list">{weeks.map(week => <button className={`week ${activeWeek === week.number ? 'active' : ''} ${week.available ? 'available' : 'pending'}`} key={week.number} onClick={() => selectWeek(week.number)} aria-current={activeWeek === week.number ? 'page' : undefined}><span>{completedWeeks.includes(week.number) ? <Check size={14} /> : String(week.number).padStart(2, '0')}</span><b>{week.title}</b><small>{week.note}</small></button>)}</nav><div className="source-note"><ShieldAlert size={18} /><b>출처 기준</b><p>1~5주차를 실제 폴더·전사본에 연결했습니다. 5주차는 4장 조합회로의 연속 학습이며 5장 플립플롭이 아닙니다.</p></div></aside>
       <main className="content">
-        <StudyNotesJump>장별 상세 정리·내 질문 보기 ↓</StudyNotesJump>
-        {activeWeek === 1 ? <section className="hero"><div><p className="eyebrow"><span /> WEEK 01 · ORIENTATION</p><h1>0과 1로<br /><em>하드웨어를 설계하다.</em></h1><p>논리회로의 해석과 설계 방법을 익혀 조합회로, 순차회로, 기억소자를 이해하는 과목입니다.</p><div className="chips"><span>OT 9쪽</span><span>시험 중심</span><span>Verilog 연결</span></div></div><button className={`complete ${completed ? 'done' : ''}`} onClick={toggleComplete}>{completed ? <><Check size={18} /> 학습 완료</> : <><Gauge size={18} /> 완료로 표시</>}</button></section> : <section className="hero pending-hero"><div><p className="eyebrow"><span /> WEEK {String(activeWeek).padStart(2, '0')} · MATERIALS PENDING</p><h1>{activeWeek}주차<br /><em>강의자료 대기</em></h1><p>이 주차의 강의자료가 아직 없어 내용을 임의로 만들지 않았습니다. 파일이 추가되면 실제 자료를 확인한 뒤 목차와 학습 노트를 채웁니다.</p><div className="chips"><span>자료 미등록</span><span>검증 후 업데이트</span></div></div></section>}
+        <StudyNotesJump>이 주차의 상세 정리·내 질문 보기 ↓</StudyNotesJump>
+        {activeWeek === 1 ? <section className="hero"><div><p className="eyebrow"><span /> WEEK 01 · ORIENTATION</p><h1>0과 1로<br /><em>하드웨어를 설계하다.</em></h1><p>논리회로의 해석과 설계 방법을 익혀 조합회로, 순차회로, 기억소자를 이해하는 과목입니다.</p><div className="chips"><span>OT 9쪽</span><span>시험 중심</span><span>Verilog 연결</span></div></div><button className={`complete ${completed ? 'done' : ''}`} onClick={toggleComplete}>{completed ? <><Check size={18} /> 학습 완료</> : <><Gauge size={18} /> 완료로 표시</>}</button></section> : activeWeek <= 5 ? <section className="hero"><div><p className="eyebrow">WEEK {String(activeWeek).padStart(2, '0')} · 학습 가능</p><h1>{activeEntry?.title}</h1><p>{activeEntry?.summary}</p></div><button className={`complete ${completed ? 'done' : ''}`} onClick={toggleComplete}>{completed ? <><Check size={18} /> 학습 완료</> : <><Gauge size={18} /> 완료로 표시</>}</button></section> : <section className="hero pending-hero"><div><p className="eyebrow"><span /> WEEK {String(activeWeek).padStart(2, '0')} · MATERIALS PENDING</p><h1>{activeWeek}주차<br /><em>강의자료 대기</em></h1><p>이 주차의 강의자료가 아직 없어 내용을 임의로 만들지 않았습니다. 파일이 추가되면 실제 자료를 확인한 뒤 목차와 학습 노트를 채웁니다.</p><div className="chips"><span>자료 미등록</span><span>검증 후 업데이트</span></div></div></section>}
         {activeWeek === 1 ? <div className="stack">
           <section className="card goal-card" id="goal"><div><p className="kicker"><Cpu size={16} /> OT 2쪽 · COURSE GOAL</p><h2>회로를 읽는 것에서 직접 설계하는 것까지</h2><p className="lead">컴퓨터 하드웨어의 기본인 디지털 회로 원리를 이해하고, 디지털 시스템을 분석·설계하는 데 필요한 개념을 배웁니다.</p></div><div className="signal-box"><span>INPUT</span><b>논리회로 원리</b><ArrowRight /><span>OUTPUT</span><b>분석·설계 역량</b></div></section>
           <section className="card" id="signals"><p className="kicker"><Zap size={16} /> OT 3쪽 · SIGNAL</p><h2>디지털과 아날로그는 정보를 표현하는 방식이 달라요</h2><div className="compare"><article><span>DIGITAL</span><h3>구분된 값으로 표현</h3><p>디지털 형태의 물리량이나 정보를 다룹니다.</p><small>예: 디지털 컴퓨터, 계산기, 오디오·비디오 장치</small></article><article><span>ANALOG</span><h3>연속적인 값으로 표현</h3><p>아날로그 형태의 물리량이나 정보를 다룹니다.</p><small>예: 라디오 수신 시 스피커 출력</small></article></div></section>
@@ -118,10 +124,10 @@ export default function Home() {
           <section className="card" id="roadmap"><p className="kicker"><Network size={16} /> OT 8쪽 · ROADMAP</p><h2>기초 표현에서 HDL 프로젝트까지 이어집니다</h2><div className="chapter-grid">{chapters.map(([n,t,d]) => <article key={`${n}-${t}`}><span>CH {n}</span><b>{t}</b><p>{d}</p></article>)}</div><div className="warning"><CircleHelp size={18} /><p><b>자료 확인 메모:</b> OT 8쪽에는 Chap 9가 중간고사 전·후 구간에 중복 표기되어 있습니다. 실제 진도 순서는 수업과 LMS 공지를 우선합니다.</p></div></section>
           <section className="card" id="method"><p className="kicker"><Lightbulb size={16} /> STUDY METHOD</p><h2>같은 기능을 다섯 표현으로 바꾸는 연습</h2><div className="flow"><span>진리표</span><ArrowRight /><span>논리식</span><ArrowRight /><span>게이트</span><ArrowRight /><span>회로</span><ArrowRight /><span>HDL</span></div><button className="copy" onClick={copyFlow}>{copied ? <Check size={15} /> : <Clipboard size={15} />}{copied ? '복사됨' : '학습 순서 복사'}</button><p className="note">이 변환 흐름은 사이트의 학습 방법입니다. 세부 회로 예제는 실제 강의자료가 추가되는 주차부터 작성합니다.</p></section>
           <section className="quiz" id="check"><p className="kicker"><Binary size={16} /> QUICK CHECK</p><h2>OT 내용을 바로 확인하세요</h2><Quiz n={1} text="중간고사와 기말고사의 합계 비중은 90점이다." answer="O" detail="각 45점으로 합계 90점이며, 출석 10점을 더해 100점입니다." open={answers.includes(1)} toggle={toggleAnswer}/><Quiz n={2} text="지각 3회는 결석 1회로 계산된다." answer="O" detail="OT 운영 안내에 명시된 출결 규칙입니다." open={answers.includes(2)} toggle={toggleAnswer}/><Quiz n={3} text="디지털 시스템은 연속적으로 변하는 값만 다룬다." answer="X" detail="연속적인 표현은 아날로그 시스템의 특징입니다." open={answers.includes(3)} toggle={toggleAnswer}/></section>
-        </div> : <PendingWeek week={activeWeek} />}
-      <ClaudeStudyNotes initialScope="ch1" />
+        </div> : activeWeek <= 5 ? <WeeklyStudy week={activeWeek} /> : <PendingWeek week={activeWeek} />}
+      {activeWeek === 1 && <ClaudeStudyNotes initialScope="ch1" locked />}
     </main>
-      <aside className="rail"><p>{activeWeek}주차 목차</p>{activeWeek === 1 ? <><nav className="rail-sections">{sections.map(section => <button key={section.id} onClick={() => go(section.id)}>{section.title}</button>)}</nav><div className="rail-memory"><Binary size={20}/><b>표현을 변환하는 힘</b><span>진리표에서 회로와 HDL까지</span></div><p className="rail-label">평가</p><blockquote>시험 90<br/>출석 10</blockquote></> : <div className="rail-empty"><Clock3 size={20}/><b>목차 준비 중</b><span>강의자료가 추가되면 이 주차의 세부 목차가 표시됩니다.</span></div>}</aside>
+      <aside className="rail"><p>{activeWeek}주차 목차</p>{activeWeek === 1 ? <><nav className="rail-sections">{sections.map(section => <button key={section.id} onClick={() => go(section.id)}>{section.title}</button>)}</nav><div className="rail-memory"><Binary size={20}/><b>표현을 변환하는 힘</b><span>진리표에서 회로와 HDL까지</span></div><p className="rail-label">평가</p><blockquote>시험 90<br/>출석 10</blockquote></> : activeWeek <= 5 ? <nav className="rail-sections">{activeSections.map((section) => <button key={section.id} onClick={() => go(section.id)}>{section.title}</button>)}</nav> : <div className="rail-empty"><Clock3 size={20}/><b>목차 준비 중</b><span>강의자료가 추가되면 이 주차의 세부 목차가 표시됩니다.</span></div>}</aside>
     </div>
   </div>;
 }
