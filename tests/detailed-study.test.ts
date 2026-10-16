@@ -31,7 +31,9 @@ test('실제 질문 요지와 별도 복습 문제를 구분하고 상세 본문
   const component = readFileSync(new URL('../app/claude-study-notes.tsx', import.meta.url), 'utf8');
   assert.ok(component.includes('함께 공부한 내용 · 강의별 상세 정리'));
   assert.ok(component.includes('내가 질문·헷갈렸던 부분'));
-  assert.ok(component.includes('section.formula, section.example, section.code'));
+  const searchData = readFileSync(new URL('../src/study-data.ts', import.meta.url), 'utf8');
+  assert.ok(component.includes('lectureSearchText(lecture)'));
+  assert.ok(searchData.includes('section.formula, section.example, section.code'));
   assert.ok(component.includes('note.questionsAsked'));
   assert.ok(component.includes('복습 확인 ·'));
   assert.ok(component.includes('원본을 재검증한 표시는 아닙니다'));
