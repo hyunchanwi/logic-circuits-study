@@ -22,7 +22,7 @@ export const gptLectureSummaries: LectureSummary[] = [
         paragraphs: [
           '출력 버블은 논리 반전이다. NAND는 AND 결과를 반전하고 NOR는 OR 결과를 반전한다. 드모르간으로 게이트를 바꾸면 AND↔OR 교체와 각 입력·출력의 반전을 함께 추적해야 한다. 버블 하나만 지워 같은 회로라고 하면 기능이 바뀐다.',
           'SOP의 곱항을 NAND로 만든 뒤 NAND로 합치는 2단 NAND-NAND는 두 번 반전되어 원래 SOP를 구현한다. POS는 NOR-NOR와 연결된다. 부울 +는 산술 덧셈이 아니라 OR이고 AB는 AND이므로 보수·흡수 법칙을 산술식처럼 적용하지 않는다.',
-        ], formula: '¬(AB)=Ā+B̅\n¬(A+B)=ĀB̅\n¬(¬P·¬Q)=P+Q', example: '편집 확인: F=AB+CD라면 첫 NAND 두 개가 ¬AB·¬CD를 만들고 마지막 NAND가 ¬(¬AB·¬CD)=AB+CD를 만듭니다.', code: '',
+        ], formula: '¬(AB)=Ā+B̅\n¬(A+B)=ĀB̅\n¬(¬P·¬Q)=P+Q', example: '편집 확인: F=AB+CD라면 첫 NAND 두 개가 ¬(AB)와 ¬(CD)를 각각 출력하고 마지막 NAND가 ¬(¬(AB)·¬(CD))=AB+CD를 만듭니다.', code: '',
       },
       {
         title: 'K-map은 Gray 순서·2의 거듭제곱 묶음으로 최소화한다',
@@ -171,7 +171,7 @@ export const gptStudyNotes: (typeof studyNotes)[number][] = [
     id: 'gpt-logic-q-bcd', scopes: ['ch9'], chapter: '9장 p.13~15', title: 'BCD 디코더부터 다시·선택 LOW와 driver',
     source: 'GPT · 9장 설명 / 9장 p.13·15 이미지 대조', location: '7442·7445 · 실제 질문은 BCD 설명 재시작 요청',
     questionsAsked: ['BCD-10진 디코더부터 다시 설명해 달라고 요청했다.'],
-    explanation: ['7442는 유효 BCD 입력에서 대응 출력 하나만 LOW다. 별도 enable 핀이 없고 1010~1111에서는 활성 출력이 없다. 아래 확인 문제의 IC 수치·무효 입력 질문을 사용자의 실제 질문으로 꾸미지 않는다.', '7445의 open collector는 출력 트랜지스터의 전류 흡수·차단 상태를 뜻한다. p.15의 80mA·30V 표기가 HIGH를 30V로 능동 생성한다는 뜻은 아니며 외부 부하·전원·동작 조건을 구분한다.'],
+    explanation: ['7442는 유효 BCD 입력에서 대응 출력 하나만 LOW다. 별도 enable 핀이 없고 1010~1111에서는 활성 출력이 없다. 아래 확인 문제는 복습을 위해 별도로 만든 문제다.', '7445의 open collector는 출력 트랜지스터의 전류 흡수·차단 상태를 뜻한다. p.15의 80mA·30V 표기가 HIGH를 30V로 능동 생성한다는 뜻은 아니며 외부 부하·전원·동작 조건을 구분한다.'],
     question: '7442에서 1011이 들어오면 d11이 LOW가 되는가? 7445는 HIGH를 능동 30V로 출력하는가?', answer: '둘 다 아니다. 7442에는 d0~d9만 있고 무효 BCD에서는 모두 HIGH다. 7445의 차단 출력 전압은 외부 pull-up·부하에 달리며 정격과 출력 동작을 혼동하면 안 된다.',
   },
 ];
